@@ -32,7 +32,7 @@ docker run -d -p 8080:8080 \
     -e "SWIFT_ADMIN_KEY=key" \
     -e "SWIFT_STORAGE_URL_SCHEME=https" \
     -v /data/docker/swift:/srv \
-     segator/swift-one
+     segator/swift-onlyone
 ```
 
 
