@@ -17,9 +17,6 @@ fi
 
 # This comes from a volume, so need to chown it here, not sure of a better way
 # to get it owned by Swift.
-if [ ! -e /srv/node ]; then
-  mkdir /srv/node
-fi
 chown -R swift:swift /srv
 
 if [ ! -e /etc/swift/account.builder ]; then
@@ -48,28 +45,41 @@ if [ ! -e /etc/swift/account.builder ]; then
 
 fi
 
+IFS=':' read -r -a array <<< "${SWIFT_CREDENTIALS}"
+SWIFT_USER_LINES=`printf "%s\n"  "${array[@]}"`
+
+echo "Configuring dispersion..."
+eval "echo \"$(</default/dispersion.conf)\"" 2> /dev/null > /etc/swift/dispersion.conf
+
+echo "Configuring Users..."
+eval "echo \"$(</default/proxy-server.conf)\"" 2> /dev/null > /etc/swift/proxy-server.conf
+
+
 # If you are going to put an ssl terminator in front of the proxy, then I believe
 # the storage_url_scheme should be set to https. So if this var isn't empty, set
 # the default storage url to https.
 if [ ! -z "${SWIFT_STORAGE_URL_SCHEME}" ]; then
-	echo "Setting default_storage_scheme to https in proxy-server.conf..."
-	sed -i -e "s/storage_url_scheme = default/storage_url_scheme = https/g" /etc/swift/proxy-server.conf
-	grep "storage_url_scheme" /etc/swift/proxy-server.conf
+        echo "Setting default_storage_scheme to https in proxy-server.conf..."
+        sed -i -e "s/storage_url_scheme = default/storage_url_scheme = https/g" /etc/swift/proxy-server.conf
+        grep "storage_url_scheme" /etc/swift/proxy-server.conf
 fi
 
-if [ ! -z "${SWIFT_USER_PASSWORD}" ]; then
-	echo "Setting passwords in /etc/swift/proxy-server.conf"
-	PASS=`pwgen 12 1`
-	sed -i -e "s/user_admin_admin = admin .admin .reseller_admin/user_admin_admin = ${SWIFT_USER_PASSWORD} .admin .reseller_admin/g" /etc/swift/proxy-server.conf
-	sed -i -e "s/user_test_tester = testing .admin/user_test_tester = ${SWIFT_USER_PASSWORD} .admin/g" /etc/swift/proxy-server.conf
-	sed -i -e "s/user_test2_tester2 = testing2 .admin/user_test2_tester2 = ${SWIFT_USER_PASSWORD} .admin/g" /etc/swift/proxy-server.conf
-	sed -i -e "s/user_test_tester3 = testing3/user_test_tester3 = ${SWIFT_USER_PASSWORD}/g" /etc/swift/proxy-server.conf
-	grep "user_test" /etc/swift/proxy-server.conf
-fi
 
 # Start supervisord
 echo "Starting supervisord..."
 /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+
+# Create default container
+if [ ! -z "${SWIFT_DEFAULT_CONTAINER}" ]; then
+	echo "Creating default container..."
+    swift -A http://localhost:8080/auth/v1.0 -U ${SWIFT_ADMIN_ACOUNT}:${SWIFT_ADMIN_USER} -K ${SWIFT_ADMIN_KEY} post ${SWIFT_DEFAULT_CONTAINER}
+fi
+
+# Create meta-url-key to allow temp download url generation
+if [ ! -z "${SWIFT_TEMP_URL_KEY}" ]; then
+  echo "Setting X-Account-Meta-Temp-URL-Key..."
+  swift -A http://localhost:8080/auth/v1.0 -U  ${SWIFT_ADMIN_ACOUNT}:${SWIFT_ADMIN_USER} -K ${SWIFT_ADMIN_KEY} post -m "Temp-URL-Key:${SWIFT_TEMP_URL_KEY}"
+fi
 
 #
 # Tail the log file for "docker log $CONTAINER_ID"

@@ -1,10 +1,16 @@
 #Docker OpenStack Swift onlyone
 
-Simple deployment of a "all in one" style OpenStack Swift server, uses Ubuntu packages as opposed to source.
+This is a docker file that creates an OpenStack swift image which has only one replica and only one device. Why would this be useful? I think that Docker and OpenStack Swift go together like peas and carrots. Distributed files systems are a pain, so why not just use OpenStack Swift? Scaling is not as much of an issue with object storage. Many Docker containers, even on separate hosts, can use one OpenStack Swift container to persist files.
 
-## Makefile and swiftrc
+But then why only one replica one and one device? I think that "onlyone" is a good starting point. It will make it easy for developers to get used to using object storage instead of a file system, and when they need the eventual consistency and multiple replicas provided by a larger OpenStack Swift cluster they can work on implementing that. I don't see one replica as an issue in small systems or for a proof-of-concept because it can just be backed up.
 
-There is a makefile with some useful helper commands, as well as a swiftrc file that you can use as well which shorts the swift command as well as adds a function to set a container to be a public, listable html page.
+## Requirements
+
+I have only tested this using the Docking and the btrfs file system. OpenStack Swift requires a file system that has xattr capability. There are several file systems that provide this, but I don't believe that aufs is one of them. So I am using btrfs. Docker 1.0 has added support for the xfs file system, which is typically what OpenStack Swift is deployed on, so that is also an option.
+
+## startmain.sh
+
+This Dockerfile uses supervisord to manage the processes. The most idiomatic way to use docker is one container one service, but in this particular Dockerfile we will be starting several services in the container, such as rsyslog, memcached, and all the required OpenStack Swift daemons (of which there are quite a few). So in this case we're using Docker more as a role-based system, and the roles are both a swift proxy and swift storage, ie. a swift "onlyone."" All of the required Swift services are running in this one container.
 
 ## Usage
 
@@ -16,10 +22,10 @@ So first we create a data only container for /srv.
 vagrant@host1:~$ docker run -v /srv --name SWIFT_DATA busybox
 ```
 
-Now that we have a data container, we can use the "--volumes-from" option when creating the "onlyone" container. Note that in this case I've called the image built from this docker file "curtis/swift-onlyone".
+Now that we have a data container, we can use the "--volumes-from" option when creating the "onlyone" container. Note that in this case I've called the image built from this docker file "morrisjobke/docker-swift-onlyone".
 
 ```bash
-vagrant@host1:~$ ID=$(docker run --name onlyone --hostname onlyone -d -p 12345:8080 --volumes-from SWIFT_DATA -t curtis/swift-onlyone)
+vagrant@host1:~$ ID=$(docker run -d -p 12345:8080 --volumes-from SWIFT_DATA -t morrisjobke/docker-swift-onlyone)
 ```
 
 We can parametrize the user credentials to the swift service this is a example
@@ -71,8 +77,8 @@ At this point OpenStack Swift is running.
 
 ```bash
 vagrant@host1:~$ docker ps
-CONTAINER ID        IMAGE                         COMMAND                CREATED             STATUS              PORTS                     NAMES
-4941f8cd8b48        curtis/swift-onlyone:latest   /bin/sh -c /usr/loca   58 seconds ago      Up 57 seconds       0.0.0.0:12345->8080/tcp   hopeful_brattain
+CONTAINER ID        IMAGE                                     COMMAND                CREATED             STATUS              PORTS                     NAMES
+4941f8cd8b48        morrisjobke/docker-swift-onlyone:latest   /bin/sh -c /usr/loca   58 seconds ago      Up 57 seconds       0.0.0.0:12345->8080/tcp   hopeful_brattain
 ```
 
 We can now use the swift python client to access Swift using the Docker forwarded port, in this example port 12345.
@@ -96,10 +102,23 @@ vagrant@host1:~$ swift -A http://127.0.0.1:12345/auth/v1.0 -U test:tester -K tes
 swift.txt
 ```
 
+If you want to add a storage container on start-up, just define an enviroment variable `SWIFT_DEFAULT_CONTAINER` with a name of required container.
+
+```bash
+vagrant@host1:~$ docker run -d -p 12345:8080 -e SWIFT_DEFAULT_CONTAINER=container_name --volumes-from SWIFT_DATA -t morrisjobke/docker-swift-onlyone
+```
+
+If you want to allow temporary download url generation, just define an enviroment variable `SWIFT_TEMP_URL_KEY` with a secret key.
+
+```bash
+vagrant@host1:~$ docker run -d -p 12345:8080 -e SWIFT_TEMP_URL_KEY=my_secret_key --volumes-from SWIFT_DATA -t morrisjobke/docker-swift-onlyone
+```
+
 That's it!
 
 ## Todo
 
+* SELINUX doesn't support btrfs?
 * It seems supervisord running as root in the container, a better way to do this?
 * bash command to start rsyslog is still running...
 * Add all the files in /etc/swift with one ADD command?
