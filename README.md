@@ -22,6 +22,21 @@ Now that we have a data container, we can use the "--volumes-from" option when c
 vagrant@host1:~$ ID=$(docker run --name onlyone --hostname onlyone -d -p 12345:8080 --volumes-from SWIFT_DATA -t curtis/swift-onlyone)
 ```
 
+We can parametrize the user credentials to the swift service this is a example
+```bash
+docker run -d -p 8080:8080 \
+    --name openstack-swift \
+    -e "SWIFT_CREDENTIALS=user_myaccount_myuser = mykey .admin:user_myaccount2_myuser2 = keyrandom .admin" \
+    -e "SWIFT_ADMIN_ACOUNT=adminaccount" \
+    -e "SWIFT_ADMIN_USER=adminuser" \
+    -e "SWIFT_ADMIN_KEY=key" \
+    -e "SWIFT_STORAGE_URL_SCHEME=https" \
+    -v /data/docker/swift:/srv \
+     segator/swift-one
+```
+
+
+
 With that container running we can now check the logs.
 
 ```bash
